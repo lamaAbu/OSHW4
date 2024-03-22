@@ -1,3 +1,4 @@
+//Part 1 – Naïve Malloc
 #include <unistd.h>
 
 #define CURRENT 0
@@ -9,11 +10,11 @@
 Tries to allocate ‘size’ bytes.
 ● Return value:
 i. Success –
-a pointer to the first allocated byte within the allocated block.
+    a pointer to the first allocated byte within the allocated block.
 ii. Failure –
-a. If ‘size’ is 0 returns NULL.
-b. If ‘size’ is more than 10^8, return NULL.
-c. If sbrk fails, return NULL. 
+    a. If ‘size’ is 0 returns NULL.
+    b. If ‘size’ is more than 10^8, return NULL.
+    c. If sbrk fails, return NULL. 
 */
 void* smalloc (size_t size)
 {
@@ -32,7 +33,7 @@ void* smalloc (size_t size)
         //case c
         return NULL;
     }
-    
+
     // success
     return sbrk(CURRENT);
 }
