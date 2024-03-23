@@ -1,5 +1,6 @@
 // Part 2 – Basic Malloc
 #include <unistd.h>
+#include <string.h>
 
 #define MAX_SIZE 100000000
 #define FAILED_SBRK_SYSCALL (void *)(-1)
@@ -11,14 +12,16 @@ public:
     bool is_free;
     MallocMetadata *next;
     MallocMetadata *prev;
+
+    MallocMetadata();
 };
 
 // MallocMetadata::MallocMetadata()
 //{
-//  size = 0;
-//  is_free = false;
-//  next = NULL;
-//   prev = NULL;
+// size = 0;
+// is_free = false;
+// next = nullptr;
+// prev = nullptr;
 //}
 
 class MeList
@@ -30,7 +33,6 @@ public:
     size_t free_bytes;
     size_t allocated_bytes;
 
-public:
     MeList(); // constructor
     void append(MallocMetadata *element);
 };
@@ -43,7 +45,15 @@ MeList ::MeList() : length(0), free_blocks(0), free_bytes(0), allocated_bytes(0)
 void MeList ::append(MallocMetadata *element)
 {
     MallocMetadata *current_node = dummy_head;
-    for (int i = 0; i < length; i++)
+    if (current_node == NULL)
+    {
+        dummy_head = element;
+        element->prev = dummy_head;
+        allocated_bytes += element->size;
+        length++;
+        return;
+    }
+    for (int i = 0; i < length - 1; i++)
     {
         current_node = current_node->next;
     }
@@ -55,7 +65,7 @@ void MeList ::append(MallocMetadata *element)
 }
 
 //*********************************************************************************** FUNCS ************************************************************
-MeList *me_list;
+MeList me_list = MeList();
 
 void *smalloc(size_t size)
 {
@@ -64,23 +74,24 @@ void *smalloc(size_t size)
         return NULL;
     }
 
-    MallocMetadata *cur_node = me_list->dummy_head;
-    for (int i = 0; i <= me_list->length; i++)
+    MallocMetadata *cur_node = me_list.dummy_head;
+    for (int i = 0; i <= me_list.length; i++)
     {
-        cur_node = cur_node->next;
-        if ((!cur_node) && cur_node->is_free)
+        if ((cur_node != NULL))
         {
-            if (size <= cur_node->size)
-            {
-                // we should mark all node ad used?
-                cur_node->is_free = false;
+            if (cur_node->is_free)
+                if (size <= cur_node->size)
+                {
+                    // we should mark all node ad used?
+                    cur_node->is_free = false;
 
-                // updating data
-                me_list->free_blocks--;
-                me_list->free_bytes -= cur_node->size;
-                me_list->allocated_bytes += cur_node->size;
-                return (void *)((char *)cur_node + sizeof(MallocMetadata));
-            }
+                    // updating data
+                    me_list.free_blocks--;
+                    me_list.free_bytes -= cur_node->size;
+                    me_list.allocated_bytes += cur_node->size;
+                    return (void *)((char *)cur_node + sizeof(MallocMetadata));
+                }
+            cur_node = cur_node->next;
         }
     }
     // we should allocate new size
@@ -89,7 +100,7 @@ void *smalloc(size_t size)
         return NULL;
 
     // update list data
-    me_list->append((MallocMetadata *)new_memory);
+    me_list.append((MallocMetadata *)new_memory);
     return (void *)((char *)new_memory + sizeof(MallocMetadata));
 }
 
@@ -111,8 +122,8 @@ void sfree(void *p)
     if (ptr->is_free)
         return;
     ptr->is_free = true;
-    me_list->free_blocks++;
-    me_list->free_bytes += ptr->size;
+    me_list.free_blocks++;
+    me_list.free_bytes += ptr->size;
     return;
 }
 
@@ -140,27 +151,27 @@ void *srealloc(void *oldp, size_t size)
 //******************************************************************************* HIDDEN FUNCS **********************************************************
 size_t _num_free_blocks()
 {
-    return me_list->free_blocks;
+    return me_list.free_blocks;
 }
 
 size_t _num_free_bytes()
 {
-    return me_list->free_bytes;
+    return me_list.free_bytes;
 }
 
 size_t _num_allocated_blocks()
 {
-    return (size_t)me_list->length;
+    return (size_t)me_list.length;
 }
 
 size_t _num_allocated_bytes()
 {
-    return me_list->allocated_bytes;
+    return me_list.allocated_bytes;
 }
 
 size_t _num_meta_data_bytes()
 {
-    return (size_t)(sizeof(MallocMetadata) * me_list->length);
+    return (size_t)(sizeof(MallocMetadata) * me_list.length);
 }
 
 size_t _size_meta_data()
