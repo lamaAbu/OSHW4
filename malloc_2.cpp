@@ -13,15 +13,15 @@ public:
     MallocMetadata *next;
     MallocMetadata *prev;
 
-    MallocMetadata();
+    //MallocMetadata();
 };
 
 // MallocMetadata::MallocMetadata()
 //{
 // size = 0;
-// is_free = false;
-// next = nullptr;
-// prev = nullptr;
+ //is_free = false;
+ //next = nullptr;
+ //prev = nullptr;
 //}
 
 class MeList
@@ -40,6 +40,7 @@ public:
 MeList ::MeList() : length(0), free_blocks(0), free_bytes(0), allocated_bytes(0)
 {
     dummy_head = NULL;
+    // here we didn't really alloctte a node
 }
 
 void MeList ::append(MallocMetadata *element)
@@ -75,7 +76,7 @@ void *smalloc(size_t size)
     }
 
     MallocMetadata *cur_node = me_list.dummy_head;
-    for (int i = 0; i <= me_list.length; i++)
+    for (int i = 0; i < me_list.length; i++)
     {
         if ((cur_node != NULL))
         {
@@ -87,8 +88,8 @@ void *smalloc(size_t size)
 
                     // updating data
                     me_list.free_blocks--;
-                    me_list.free_bytes -= cur_node->size;
-                    me_list.allocated_bytes += cur_node->size;
+                    me_list.free_bytes -= cur_node->size; 
+                    //me_list.allocated_bytes += cur_node->size;
                     return (void *)((char *)cur_node + sizeof(MallocMetadata));
                 }
             cur_node = cur_node->next;
@@ -100,7 +101,10 @@ void *smalloc(size_t size)
         return NULL;
 
     // update list data
-    me_list.append((MallocMetadata *)new_memory);
+    MallocMetadata *helper = (MallocMetadata *)new_memory;
+    helper->size = size; 
+    helper->is_free = false;
+    me_list.append(helper);
     return (void *)((char *)new_memory + sizeof(MallocMetadata));
 }
 
