@@ -1,10 +1,13 @@
 //Part 3 - Better Malloc
+// Implementing by Buddy Allocator
 
 #include <unistd.h>
 #include <string.h>
 
+#define MAX_ORDER 10
 #define MAX_SIZE 100000000
 #define FAILED_SBRK_SYSCALL (void *)(-1)
+
 
 class MallocMetadata
 {
@@ -57,7 +60,8 @@ void MeList ::append(MallocMetadata *element)
 }
 
 //*********************************************************************************** FUNCS ************************************************************
-MeList me_list = MeList();
+MeList me_list = MeList(); //i don't think we need this here
+MeList* me_histogram[MAX_ORDER + 1]; // should we initialize it?
 
 void *smalloc(size_t size)
 {
