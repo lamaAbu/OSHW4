@@ -1,7 +1,6 @@
 //Part 1 – Naïve Malloc
 #include <unistd.h>
 
-#define CURRENT 0
 #define MAX_SIZE 100000000
 #define FAILED_SBRK_SYSCALL (void*)(-1)
 
@@ -33,4 +32,4 @@ void* smalloc (size_t size)
 
     // success
     return new_memory_ptr;
-}
+} 
