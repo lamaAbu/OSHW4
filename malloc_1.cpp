@@ -18,22 +18,19 @@ ii. Failure –
 */
 void* smalloc (size_t size)
 {
+    // case a
     if(size == 0)
-    {
-        // case a
         return NULL;
-    }
+
+    // case b
     else if(size > MAX_SIZE)
-    {
-        // case b
         return NULL;
-    }
-    else if(sbrk(size) == FAILED_SBRK_SYSCALL)
-    {
-        //case c
+
+    //case c
+    void* new_memory_ptr = sbrk(size);
+    if(new_memory_ptr == FAILED_SBRK_SYSCALL)
         return NULL;
-    }
 
     // success
-    return sbrk(CURRENT);
+    return new_memory_ptr;
 }
