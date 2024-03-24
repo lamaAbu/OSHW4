@@ -3,9 +3,13 @@
 
 #include <unistd.h>
 #include <string.h>
+#include <cmath>
 
 #define MAX_ORDER 10
+#define KILO_BYTE 1024
 #define MAX_SIZE 100000000
+#define INITIAL_BLOCKS_NUM 32
+#define BLOCK_SIZE 128 * KILO_BYTE
 #define FAILED_SBRK_SYSCALL (void *)(-1)
 
 
@@ -29,6 +33,7 @@ public:
 
     MeList(); // constructor
     void append(MallocMetadata *element);
+    void remove_head();
 };
 
 MeList ::MeList() : length(0), free_blocks(0), free_bytes(0), allocated_bytes(0)
@@ -59,9 +64,109 @@ void MeList ::append(MallocMetadata *element)
     length++;
 }
 
+void MeList:: remove_head()
+{
+    if(dummy_head == nullptr)
+    {
+        return;
+    }
+    else
+    {
+        MallocMetadata* tmp = dummy_head;
+        if(tmp->next != nullptr)
+        {
+            dummy_head = tmp->next;
+            dummy_head->prev = nullptr;
+        }
+        // should free tmp?
+    }
+}
+
+//*********************************************************************************** Histogram ************************************************************
+MeList* block_lists_arr[MAX_ORDER + 1]; // should we initialize it?
+
+void add_and_merge_buddies(MallocMetadata* element, int order)
+{
+    // assuming the answer i asked in piaza is yes!
+    if(order == MAX_ORDER)
+    {
+        return;
+    }
+    if(block_lists_arr[order]->length == 0)
+    {
+        // we have no other buddies to merge
+        block_lists_arr[order]->append(element);
+    }
+    else
+    {
+        // i think the length of lists is always 0 or 1, except in max order
+        // we should merge
+        element->size *= 2;
+        block_lists_arr[order]->remove_head();
+        add_and_merge_buddies(element, order + 1);
+    }
+
+}
+
+void add_to_arr(MallocMetadata* element)
+{
+    int order = 0;
+    while(order < MAX_ORDER)
+    {
+        if(pow(2,order) == element->size)// assumig we can use this, asked in PIAZZA already
+        {
+            // we are done
+            break;
+        }
+
+        order++;
+    }
+    add_and_merge_buddies(element, order);
+
+}
+
+void seperate_buddies(MallocMetadata* element,int order, int size)
+{
+    if(order == 0)
+    {
+        return;
+    }
+    if((pow(2,order - 1) < size) && (size <= pow(2,order)))
+    {
+        // now we have order which fits the size,
+        element->is_free = false;
+        return;
+    }
+    else
+    {
+        // we have to split
+        MallocMetadata* new_buddy; // how to create new object?
+        new_buddy->size /= 2;
+        add_and_merge_buddies(new_buddy, order - 1);
+        element->size /= 2;
+        seperate_buddies(element, order - 1, size);
+    }
+
+}
+
+void remove_from_arr(MallocMetadata* element, int size)
+{
+    int order = 0;
+    while(order < MAX_ORDER)
+    {
+        if(pow(2,order) == element->size)// assumig we can use this, asked in PIAZZA already
+        {
+            // we are done
+            break;
+        }
+
+        order++;
+    }
+    seperate_buddies(element, order, size);
+} 
+
 //*********************************************************************************** FUNCS ************************************************************
 MeList me_list = MeList(); //i don't think we need this here
-MeList* me_histogram[MAX_ORDER + 1]; // should we initialize it?
 
 void *smalloc(size_t size)
 {
