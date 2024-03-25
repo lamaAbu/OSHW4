@@ -20,7 +20,7 @@ public:
     MallocMetadata *next;
     MallocMetadata *prev;
     MallocMetadata *father;
-    MallocMetadata *parallel; // this is relevant just to node in free_block_arr
+    MallocMetadata *parallel;
 };
 
 class MeList
@@ -135,6 +135,58 @@ void add_and_merge_buddies(MallocMetadata *element, int order)
        add_and_merge_buddies(element, order + 1); 
        
     }
+}
+
+void merge_free(MallocMetadata* node_in_free, int order)
+{
+
+}
+
+void merge_mixed(MallocMetadata* node_in_mixed)
+{
+    MallocMetadata* next_node = node_in_mixed->next;
+    MallocMetadata* prev_node = node_in_mixed->prev;
+    MallocMetadata* father = node_in_mixed->father;
+    if(next_node != nullptr)
+    {   //merge with next
+        if(father == next_node->father && next_node->is_free)
+        {
+            // we have to merge with the next
+            if(node_in_mixed->prev != nullptr)
+            {
+                node_in_mixed->prev->next = father;
+                
+            }
+            if(next_node->next != nullptr)  
+            {  
+                next_node->next->prev = father;
+                
+            }   
+            father->prev = node_in_mixed->prev;  
+            father->next = next_node->next;    
+            // waht should i do with next?
+        }
+    }
+    else if(prev_node != nullptr)
+    {
+        if(father == prev_node->father && prev_node->is_free)
+        {
+            // we have to merge with the prev
+            if(node_in_mixed->next != nullptr)
+            {
+                node_in_mixed->next->prev = father;
+            }
+            if(next_node->next != nullptr)  
+            {  
+                next_node->next->prev = father;
+            }  
+            father->next = node_in_mixed->next;  
+            father->next = next_node->next; 
+            // waht should i do with prev?
+        }
+    }
+    // what should  i do with node_in_mixed ?
+
 }
 
 void add_to_arr(MallocMetadata *element)
