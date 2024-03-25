@@ -1,5 +1,5 @@
-//Part 3 - Better Malloc
-// Implementing by Buddy Allocator
+// Part 3 - Better Malloc
+//  Implementing by Buddy Allocator
 
 #include <unistd.h>
 #include <string.h>
@@ -12,7 +12,6 @@
 #define BLOCK_SIZE 128 * KILO_BYTE
 #define FAILED_SBRK_SYSCALL (void *)(-1)
 
-
 class MallocMetadata
 {
 public:
@@ -20,6 +19,8 @@ public:
     bool is_free;
     MallocMetadata *next;
     MallocMetadata *prev;
+    MallocMetadata *father;
+    MallocMetadata *parallel; // this is relevant just to node in free_block_arr
 };
 
 class MeList
@@ -64,16 +65,16 @@ void MeList ::append(MallocMetadata *element)
     length++;
 }
 
-void MeList:: remove_head()
+void MeList::remove_head()
 {
-    if(dummy_head == nullptr)
+    if (dummy_head == nullptr)
     {
         return;
     }
     else
     {
-        MallocMetadata* tmp = dummy_head;
-        if(tmp->next != nullptr)
+        MallocMetadata *tmp = dummy_head;
+        if (tmp->next != nullptr)
         {
             dummy_head = tmp->next;
             dummy_head->prev = nullptr;
@@ -83,16 +84,44 @@ void MeList:: remove_head()
 }
 
 //*********************************************************************************** Histogram ************************************************************
-MeList* block_lists_arr[MAX_ORDER + 1]; // should we initialize it?
+// ah ok
+MeList *free_blocks_arr[MAX_ORDER + 1]; // should we initialize it?
+MeList *blocks_arr;// each elemnt is a tree
+MeList *mmap_list;
 
-void add_and_merge_buddies(MallocMetadata* element, int order)
+void init_blocks_arr()
 {
-    // assuming the answer i asked in piaza is yes!
-    if(order == MAX_ORDER)
+    for (int i = 0; i < INITIAL_BLOCKS_NUM; i++)
+    {
+        MallocMetadata *element;
+        element->size = MAX_SIZE;
+        element->is_free = true;
+        element->father = NULL;
+        element->next = NULL;
+        element->prev = NULL;
+        blocks_arr->append(element);
+    }
+}
+
+MallocMetadata* find_block(int order)
+{
+    MallocMetadata* helper = blocks_arr->dummy_head;
+    while(order!=0)
+        helper = helper->next;
+    return helper;
+}
+
+void add_and_merge_buddies(MallocMetadata *element, int order)
+{
+    // omar note that we implement merge as a helper function for add s7?
+    // didn't understand .. we have only 1 case of merge 
+    // when we do free
+   if (order == MAX_ORDER)
     {
         return;
     }
-    if(block_lists_arr[order]->length == 0)
+    MallocMetadata* block = find_block(order);
+    if (block_lists_arr[order]->length == 0)
     {
         // we have no other buddies to merge
         block_lists_arr[order]->append(element);
@@ -102,18 +131,18 @@ void add_and_merge_buddies(MallocMetadata* element, int order)
         // i think the length of lists is always 0 or 1, except in max order
         // we should merge
         element->size *= 2;
-        block_lists_arr[order]->remove_head();
-        add_and_merge_buddies(element, order + 1);
+      block_lists_arr[order]->remove_head();
+       add_and_merge_buddies(element, order + 1); 
+       
     }
-
 }
 
-void add_to_arr(MallocMetadata* element)
+void add_to_arr(MallocMetadata *element)
 {
     int order = 0;
-    while(order < MAX_ORDER)
+    while (order < MAX_ORDER)
     {
-        if(pow(2,order) == element->size)// assumig we can use this, asked in PIAZZA already
+        if (pow(2, order) == element->size) // assumig we can use this, asked in PIAZZA already
         {
             // we are done
             break;
@@ -122,16 +151,15 @@ void add_to_arr(MallocMetadata* element)
         order++;
     }
     add_and_merge_buddies(element, order);
-
 }
 
-void seperate_buddies(MallocMetadata* element,int order, int size)
+void seperate_buddies(MallocMetadata *element, int order, int size)
 {
-    if(order == 0)
+    if (order == 0)
     {
         return;
     }
-    if((pow(2,order - 1) < size) && (size <= pow(2,order)))
+    if ((pow(2, order - 1) < size) && (size <= pow(2, order)))
     {
         // now we have order which fits the size,
         element->is_free = false;
@@ -140,21 +168,20 @@ void seperate_buddies(MallocMetadata* element,int order, int size)
     else
     {
         // we have to split
-        MallocMetadata* new_buddy; // how to create new object?
+        MallocMetadata *new_buddy; // how to create new object?
         new_buddy->size /= 2;
         add_and_merge_buddies(new_buddy, order - 1);
         element->size /= 2;
         seperate_buddies(element, order - 1, size);
     }
-
 }
 
-void remove_from_arr(MallocMetadata* element, int size)
+void remove_from_arr(MallocMetadata *element, int size)
 {
     int order = 0;
-    while(order < MAX_ORDER)
+    while (order < MAX_ORDER)
     {
-        if(pow(2,order) == element->size)// assumig we can use this, asked in PIAZZA already
+        if (pow(2, order) == element->size) // assumig we can use this, asked in PIAZZA already
         {
             // we are done
             break;
@@ -163,10 +190,11 @@ void remove_from_arr(MallocMetadata* element, int size)
         order++;
     }
     seperate_buddies(element, order, size);
-} 
+
+}// BALA
 
 //*********************************************************************************** FUNCS ************************************************************
-MeList me_list = MeList(); //i don't think we need this here
+MeList me_list = MeList(); // i don't think we need this here
 
 void *smalloc(size_t size)
 {
@@ -187,7 +215,7 @@ void *smalloc(size_t size)
 
                     // updating data
                     me_list.free_blocks--;
-                    me_list.free_bytes -= cur_node->size; 
+                    me_list.free_bytes -= cur_node->size;
                     return (void *)((char *)cur_node + sizeof(MallocMetadata));
                 }
             cur_node = cur_node->next;
@@ -200,7 +228,7 @@ void *smalloc(size_t size)
 
     // update list data
     MallocMetadata *helper = (MallocMetadata *)new_memory;
-    helper->size = size; 
+    helper->size = size;
     helper->is_free = false;
     me_list.append(helper);
     return (void *)((char *)new_memory + sizeof(MallocMetadata));
