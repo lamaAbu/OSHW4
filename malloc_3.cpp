@@ -14,6 +14,9 @@
 // merged_node.address = left_son.address
 // merged_node.size = left_son.size + right_son.size + sizeof(MallocMetadata)
 
+// muth to find buddies :
+// XOR(node1.adress, node1.size) == node2.adress ? if yes they are buddies.. else not ☻
+
 #include <unistd.h>
 #include <string.h>
 #include <cmath>
@@ -33,7 +36,6 @@ public:
     int address;
     MallocMetadata *next;
     MallocMetadata *prev;
-    MallocMetadata *father;
     MallocMetadata *next_free;
     MallocMetadata *prev_free;
 };
@@ -84,10 +86,10 @@ void MeList ::append(MallocMetadata *element)
 
 void MeList::add_node_free(MallocMetadata *new_node)
 {
-    MallocMetadata* tmp = dummy_head;
-    for(int i=0; i < length; i++)
+    MallocMetadata *tmp = dummy_head;
+    for (int i = 0; i < length; i++)
     {
-        if(tmp->address > new_node->address)
+        if (tmp->address > new_node->address)
             break;
         tmp = tmp->next_free;
     }
@@ -126,7 +128,6 @@ void init_blocks()
         MallocMetadata *element;
         element->size = MAX_SIZE;
         element->is_free = true;
-        element->father = NULL;
         element->next = NULL;
         element->prev = NULL;
         element->address = i * MAX_SIZE;
@@ -156,13 +157,13 @@ void add_and_merge_buddies(MallocMetadata *element, int order) // recursion appr
         if (check != nullptr)
         {
             merge_free(element, check, order);
-            free_blocks_arr[2*order]->add_node_free();
-            add_and_merge_buddies(element->father, 2 * order);
+            free_blocks_arr[order + 1]->add_node_free(element);
+            add_and_merge_buddies(element, order + 1);
         }
     }
 }
 
-void merge_free(MallocMetadata *node_in_free, MallocMetadata *buddy_node, int order) // good
+void merge_free(MallocMetadata *node_in_free, MallocMetadata *buddy_node, int order) // approved
 {
     MeList *cur_list = free_blocks_arr[order];
     MallocMetadata *cur_node = cur_list->dummy_head;
@@ -178,7 +179,7 @@ void merge_free(MallocMetadata *node_in_free, MallocMetadata *buddy_node, int or
                         buddy_node->next_free->prev_free = node_in_free->prev_free;
                 }
                 else
-                node_in_free->next_free->prev_free = buddy_node->prev_free;
+                    node_in_free->next_free->prev_free = buddy_node->prev_free;
             }
             if (node_in_free->prev)
             {
@@ -188,62 +189,67 @@ void merge_free(MallocMetadata *node_in_free, MallocMetadata *buddy_node, int or
                         buddy_node->prev_free->next_free = node_in_free->next_free;
                 }
                 else
-                node_in_free->prev_free->next_free = buddy_node->next_free;
+                    node_in_free->prev_free->next_free = buddy_node->next_free;
             }
             break;
         }
         cur_node = cur_node->next;
     }
-    cur_list->length -=2;
+    cur_list->length -= 2;
 }
 
+// either returns buddy or NULL
 MallocMetadata *merge_all(MallocMetadata *node_in_all) // approved
 {
     MallocMetadata *next_node = node_in_all->next;
     MallocMetadata *prev_node = node_in_all->prev;
-    MallocMetadata *father = node_in_all->father;
+    int xor_result = node_in_all->address ^ (int)node_in_all->size;
     if (next_node != NULL)
-    { // merge with next
-        if (father == next_node->father && next_node->is_free)
+    {
+        // note about xor is at the beginning
+        if (xor_result == next_node->address && next_node->is_free)
         {
-            // we have to merge with the next
-            if (node_in_all->prev != NULL)
-            {
-                node_in_all->prev->next = father;
-            }
+
+            // if "buddies" are not same size they are not buddies
+            if (next_node->size != node_in_all->size)
+                return NULL;
+
+            // note there was another if like that, previously it should point at father
+            // but notice that node_in_all's meta data is excatly father's metadata
+            // so there is no mean to point at node_in_all's father bcs it's himself
             if (next_node->next != NULL)
             {
-                next_node->next->prev = father;
+                next_node->next->prev = node_in_all;
             }
-            father->prev = node_in_all->prev;
-            father->next = next_node->next;
-            father->size = node_in_all->size * 2 + sizeof(MallocMetadata);
+
+            node_in_all->next = next_node->next;
+            node_in_all->size = node_in_all->size * 2 + sizeof(MallocMetadata);
+
+            // i want to return the "father"
             return next_node;
         }
     }
     else if (prev_node != NULL)
     {
-        if (father == prev_node->father && prev_node->is_free)
+        if (xor_result == prev_node->address && prev_node->is_free)
         {
-            // we have to merge with the prev
+            if (prev_node->size != node_in_all->size)
+                return NULL;
+
             if (node_in_all->next != NULL)
             {
-                node_in_all->next->prev = father;
+                node_in_all->next->prev = prev_node;
             }
-            if (prev_node->prev != NULL)
-            {
-                prev_node->prev->next = father;
-            }
-            father->next = node_in_all->next;
-            father->prev = prev_node->prev;
-            father->size = prev_node->size * 2 + sizeof(MallocMetadata);
+
+            prev_node->next = node_in_all->next;
+            prev_node->size = prev_node->size * 2 + sizeof(MallocMetadata);
             return prev_node;
         }
     }
     return NULL;
 }
 
-void add_to_arr(MallocMetadata *element)
+void add_to_arr(MallocMetadata *element) //approved
 {
     int order = 0;
     while (order < MAX_ORDER)
