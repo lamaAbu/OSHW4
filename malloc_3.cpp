@@ -130,6 +130,8 @@ void init_blocks()
         element->is_free = true;
         element->next = NULL;
         element->prev = NULL;
+        element->next_free = NULL;
+        element->prev_free = NULL;
         element->address = i * MAX_SIZE;
         all_blocks_list->append(element);
     }
@@ -183,6 +185,8 @@ void merge_free(MallocMetadata *node_in_free, int order) // approved
                 next->prev_free = prev;
             if (prev)
                 prev->next_free = next;
+            if((next == NULL) && (prev== NULL))
+                cur_list->dummy_head = NULL;
             break;
         }
         cur_node = cur_node->next;
