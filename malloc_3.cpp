@@ -1,6 +1,19 @@
 // Part 3 - Better Malloc
 //  Implementing by Buddy Allocator
 
+// SIZE DOES NOT INCLUDE SIZE OF MallocMetadata !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// we calculate address according to node place in all_block_list
+//  0 < address < 31 * 128
+//  (order-1) * 128 <= address of each node < order * 128
+//  splitting node to node1 and node2
+//  node1->adress = (order-1) * 128
+//  node2-> address = ((order-1) * 128) + (father.size / 2)
+//  each one of the node1 and node2 has size of (father.size - sizeof(MallocMetadata))/2
+
+// merging nodes
+// merged_node.address = left_son.address
+// merged_node.size = left_son.size + right_son.size + sizeof(MallocMetadata)
+
 #include <unistd.h>
 #include <string.h>
 #include <cmath>
@@ -15,12 +28,14 @@
 class MallocMetadata
 {
 public:
-    size_t size;
+    size_t size; // doesn't include metadata of cur node
     bool is_free;
+    int address;
     MallocMetadata *next;
     MallocMetadata *prev;
     MallocMetadata *father;
-    MallocMetadata *parallel;
+    MallocMetadata *next_free;
+    MallocMetadata *prev_free;
 };
 
 class MeList
@@ -34,6 +49,8 @@ public:
 
     MeList(); // constructor
     void append(MallocMetadata *element);
+    void add_node_free(MallocMetadata *new_node);
+    void delete_node(MeList *list, MallocMetadata *node);
     void remove_head();
 };
 
@@ -65,6 +82,20 @@ void MeList ::append(MallocMetadata *element)
     length++;
 }
 
+void MeList::add_node_free(MallocMetadata *new_node)
+{
+    MallocMetadata* tmp = dummy_head;
+    for(int i=0; i < length; i++)
+    {
+        if(tmp->address > new_node->address)
+            break;
+        tmp = tmp->next_free;
+    }
+    tmp->prev_free = new_node;
+    new_node->next_free = tmp;
+    length++;
+}
+
 void MeList::remove_head()
 {
     if (dummy_head == nullptr)
@@ -79,17 +110,16 @@ void MeList::remove_head()
             dummy_head = tmp->next;
             dummy_head->prev = nullptr;
         }
-        // should free tmp?
     }
 }
 
 //*********************************************************************************** Histogram ************************************************************
-// ah ok
+
 MeList *free_blocks_arr[MAX_ORDER + 1]; // should we initialize it?
-MeList *blocks_arr;// each elemnt is a tree
+MeList *all_blocks_list;                // each elemnt is a tree "reveresed tree"
 MeList *mmap_list;
 
-void init_blocks_arr()
+void init_blocks()
 {
     for (int i = 0; i < INITIAL_BLOCKS_NUM; i++)
     {
@@ -99,127 +129,118 @@ void init_blocks_arr()
         element->father = NULL;
         element->next = NULL;
         element->prev = NULL;
-        blocks_arr->append(element);
+        element->address = i * MAX_SIZE;
+        all_blocks_list->append(element);
     }
 }
 
-MallocMetadata* find_block(int order)
+MallocMetadata *find_block(int order)
 {
-    MallocMetadata* helper = blocks_arr->dummy_head;
-    while(order!=0)
+    MallocMetadata *helper = all_blocks_list->dummy_head;
+    while (order != 0)
         helper = helper->next;
     return helper;
 }
 
-void add_and_merge_buddies(MallocMetadata *element, int order)
+void add_and_merge_buddies(MallocMetadata *element, int order) // recursion approved
 {
-    
-   if (order == MAX_ORDER)
+
+    if (order == MAX_ORDER)
     {
         return;
     }
     else
     {
         // we should merge
-        MallocMetadata* check = merge_mixed(element);
-        if(check != nullptr)
+        MallocMetadata *check = merge_all(element);
+        if (check != nullptr)
         {
-            merge_free(element,check,2*order);
-            add_and_merge_buddies(element->father,2*order);
+            merge_free(element, check, order);
+            free_blocks_arr[2*order]->add_node_free();
+            add_and_merge_buddies(element->father, 2 * order);
         }
-       
     }
 }
 
-void merge_free(MallocMetadata* node_in_free, MallocMetadata* buddy_node, int order) // good
+void merge_free(MallocMetadata *node_in_free, MallocMetadata *buddy_node, int order) // good
 {
-    MeList* cur_list = free_blocks_arr[order];
-    MallocMetadata* cur_node = cur_list->dummy_head;
-    for(int i = 0; i < cur_list->length; i++)
+    MeList *cur_list = free_blocks_arr[order];
+    MallocMetadata *cur_node = cur_list->dummy_head;
+    for (int i = 0; i < cur_list->length; i++)
     {
-        if(cur_node == node_in_free)
+        if (cur_node == node_in_free)
         {
-            if(node_in_free->next)
+            if (node_in_free->next_free)
             {
-                node_in_free->next->prev = node_in_free->prev;
+                if (node_in_free->next_free == buddy_node)
+                {
+                    if (buddy_node->next_free)
+                        buddy_node->next_free->prev_free = node_in_free->prev_free;
+                }
+                else
+                node_in_free->next_free->prev_free = buddy_node->prev_free;
             }
-            if(node_in_free->prev)
+            if (node_in_free->prev)
             {
-                node_in_free->prev->next = node_in_free->next;
+                if (node_in_free->prev_free == buddy_node)
+                {
+                    if (buddy_node->prev_free)
+                        buddy_node->prev_free->next_free = node_in_free->next_free;
+                }
+                else
+                node_in_free->prev_free->next_free = buddy_node->next_free;
             }
+            break;
         }
         cur_node = cur_node->next;
     }
-
-    cur_node = cur_list->dummy_head;
-    for(int i = 0; i < cur_list->length - 1; i++)
-    {
-        if(cur_node == buddy_node)
-        {
-            if(buddy_node->next)
-            {
-                buddy_node->next->prev = buddy_node->prev;
-            }
-            if(buddy_node->prev)
-            {
-                buddy_node->prev->next = buddy_node->next;
-            }
-        }
-        cur_node = cur_node->next;
-    }
-    // what sould i do with node_in_free and next node?
-
-    
+    cur_list->length -=2;
 }
 
-MallocMetadata* merge_mixed(MallocMetadata* node_in_mixed) // good
+MallocMetadata *merge_all(MallocMetadata *node_in_all) // approved
 {
-    MallocMetadata* next_node = node_in_mixed->next;
-    MallocMetadata* prev_node = node_in_mixed->prev;
-    MallocMetadata* father = node_in_mixed->father;
-    if(next_node != nullptr)
-    {   //merge with next
-        if(father == next_node->father && next_node->is_free)
+    MallocMetadata *next_node = node_in_all->next;
+    MallocMetadata *prev_node = node_in_all->prev;
+    MallocMetadata *father = node_in_all->father;
+    if (next_node != NULL)
+    { // merge with next
+        if (father == next_node->father && next_node->is_free)
         {
             // we have to merge with the next
-            if(node_in_mixed->prev != nullptr)
+            if (node_in_all->prev != NULL)
             {
-                node_in_mixed->prev->next = father;
-                
+                node_in_all->prev->next = father;
             }
-            if(next_node->next != nullptr)  
-            {  
+            if (next_node->next != NULL)
+            {
                 next_node->next->prev = father;
-                
-            }   
-            father->prev = node_in_mixed->prev;  
-            father->next = next_node->next;    
-            // waht should i do with next?
+            }
+            father->prev = node_in_all->prev;
+            father->next = next_node->next;
+            father->size = node_in_all->size * 2 + sizeof(MallocMetadata);
             return next_node;
         }
     }
-    else if(prev_node != nullptr)
+    else if (prev_node != NULL)
     {
-        if(father == prev_node->father && prev_node->is_free)
+        if (father == prev_node->father && prev_node->is_free)
         {
             // we have to merge with the prev
-            if(node_in_mixed->next != nullptr)
+            if (node_in_all->next != NULL)
             {
-                node_in_mixed->next->prev = father;
+                node_in_all->next->prev = father;
             }
-            if(next_node->next != nullptr)  
-            {  
-                next_node->next->prev = father;
-            }  
-            father->next = node_in_mixed->next;  
-            father->next = next_node->next; 
-            // waht should i do with prev?
+            if (prev_node->prev != NULL)
+            {
+                prev_node->prev->next = father;
+            }
+            father->next = node_in_all->next;
+            father->prev = prev_node->prev;
+            father->size = prev_node->size * 2 + sizeof(MallocMetadata);
             return prev_node;
         }
     }
-    // what should  i do with node_in_mixed ?
-    return nullptr;
-
+    return NULL;
 }
 
 void add_to_arr(MallocMetadata *element)
@@ -238,7 +259,7 @@ void add_to_arr(MallocMetadata *element)
     add_and_merge_buddies(element, order);
 }
 
-void seperate_buddies(MallocMetadata *element, int order, int size)
+void split_buddies(MallocMetadata *element, int order, int size)
 {
     if (order == 0)
     {
@@ -257,8 +278,15 @@ void seperate_buddies(MallocMetadata *element, int order, int size)
         new_buddy->size /= 2;
         add_and_merge_buddies(new_buddy, order - 1);
         element->size /= 2;
-        seperate_buddies(element, order - 1, size);
+        split_buddies(element, order - 1, size);
     }
+}
+void split_free(int order)
+{
+}
+
+MallocMetadata *slpit_all()
+{
 }
 
 void remove_from_arr(MallocMetadata *element, int size)
@@ -275,7 +303,6 @@ void remove_from_arr(MallocMetadata *element, int size)
         order++;
     }
     seperate_buddies(element, order, size);
-
 }
 
 //*********************************************************************************** FUNCS ************************************************************
