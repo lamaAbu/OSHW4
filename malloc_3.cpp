@@ -153,17 +153,18 @@ void add_and_merge_buddies(MallocMetadata *element, int order) // recursion appr
     else
     {
         // we should merge
-        MallocMetadata *check = merge_all(element);
-        if (check != nullptr)
+        MallocMetadata *father = merge_all(element);
+        if (father != nullptr)
         {
-            merge_free(element, check, order);
-            free_blocks_arr[order + 1]->add_node_free(element);
-            add_and_merge_buddies(element, order + 1);
+            // by father here .. i just want to get adress of the left buddy
+            merge_free(father, order);
+            free_blocks_arr[order + 1]->add_node_free(father);
+            add_and_merge_buddies(father, order + 1);
         }
     }
 }
 
-void merge_free(MallocMetadata *node_in_free, MallocMetadata *buddy_node, int order) // approved
+void merge_free(MallocMetadata *node_in_free, int order) // approved
 {
     MeList *cur_list = free_blocks_arr[order];
     MallocMetadata *cur_node = cur_list->dummy_head;
@@ -171,26 +172,17 @@ void merge_free(MallocMetadata *node_in_free, MallocMetadata *buddy_node, int or
     {
         if (cur_node == node_in_free)
         {
-            if (node_in_free->next_free)
-            {
-                if (node_in_free->next_free == buddy_node)
-                {
-                    if (buddy_node->next_free)
-                        buddy_node->next_free->prev_free = node_in_free->prev_free;
-                }
-                else
-                    node_in_free->next_free->prev_free = buddy_node->prev_free;
-            }
-            if (node_in_free->prev)
-            {
-                if (node_in_free->prev_free == buddy_node)
-                {
-                    if (buddy_node->prev_free)
-                        buddy_node->prev_free->next_free = node_in_free->next_free;
-                }
-                else
-                    node_in_free->prev_free->next_free = buddy_node->next_free;
-            }
+            // this is always the case (next / prev might be NULL)
+            // prev -> cur_node -> buddy_node -> next
+
+            // this always exist, node_in_free has always the smaller address
+            // buddy_node = cur_node->next_free
+            MallocMetadata *next = cur_node->next_free->next_free;
+            MallocMetadata *prev = cur_node->prev_free;
+            if (next)
+                next->prev_free = prev;
+            if (prev)
+                prev->next_free = next;
             break;
         }
         cur_node = cur_node->next;
@@ -198,7 +190,7 @@ void merge_free(MallocMetadata *node_in_free, MallocMetadata *buddy_node, int or
     cur_list->length -= 2;
 }
 
-// either returns buddy or NULL
+// either returns "father" or NULL
 MallocMetadata *merge_all(MallocMetadata *node_in_all) // approved
 {
     MallocMetadata *next_node = node_in_all->next;
@@ -226,7 +218,7 @@ MallocMetadata *merge_all(MallocMetadata *node_in_all) // approved
             node_in_all->size = node_in_all->size * 2 + sizeof(MallocMetadata);
 
             // i want to return the "father"
-            return next_node;
+            return node_in_all;
         }
     }
     else if (prev_node != NULL)
@@ -249,7 +241,7 @@ MallocMetadata *merge_all(MallocMetadata *node_in_all) // approved
     return NULL;
 }
 
-void add_to_arr(MallocMetadata *element) //approved
+void add_to_arr(MallocMetadata *element) // approved
 {
     int order = 0;
     while (order < MAX_ORDER)
