@@ -137,12 +137,17 @@ void add_and_merge_buddies(MallocMetadata *element, int order)
     }
 }
 
-void merge_free(MallocMetadata* node_in_free, int order)
+void merge_free(MallocMetadata* node_in_free, MallocMetadata* buddy_node, int order)
 {
-
+    MeList* cur_list = free_blocks_arr[order];
+    for(int i = 0; i <= cur_list->length; i++)
+    {
+        if()
+    }
+    
 }
 
-void merge_mixed(MallocMetadata* node_in_mixed)
+MallocMetadata* merge_mixed(MallocMetadata* node_in_mixed)
 {
     MallocMetadata* next_node = node_in_mixed->next;
     MallocMetadata* prev_node = node_in_mixed->prev;
@@ -165,6 +170,7 @@ void merge_mixed(MallocMetadata* node_in_mixed)
             father->prev = node_in_mixed->prev;  
             father->next = next_node->next;    
             // waht should i do with next?
+            return next_node;
         }
     }
     else if(prev_node != nullptr)
@@ -183,9 +189,11 @@ void merge_mixed(MallocMetadata* node_in_mixed)
             father->next = node_in_mixed->next;  
             father->next = next_node->next; 
             // waht should i do with prev?
+            return prev_node;
         }
     }
     // what should  i do with node_in_mixed ?
+    return nullptr;
 
 }
 
@@ -243,7 +251,7 @@ void remove_from_arr(MallocMetadata *element, int size)
     }
     seperate_buddies(element, order, size);
 
-}// BALA
+}
 
 //*********************************************************************************** FUNCS ************************************************************
 MeList me_list = MeList(); // i don't think we need this here
