@@ -113,41 +113,66 @@ MallocMetadata* find_block(int order)
 
 void add_and_merge_buddies(MallocMetadata *element, int order)
 {
-    // omar note that we implement merge as a helper function for add s7?
-    // didn't understand .. we have only 1 case of merge 
-    // when we do free
+    
    if (order == MAX_ORDER)
     {
         return;
     }
-    MallocMetadata* block = find_block(order);
-    if (block_lists_arr[order]->length == 0)
-    {
-        // we have no other buddies to merge
-        block_lists_arr[order]->append(element);
-    }
     else
     {
-        // i think the length of lists is always 0 or 1, except in max order
         // we should merge
-        element->size *= 2;
-      block_lists_arr[order]->remove_head();
-       add_and_merge_buddies(element, order + 1); 
+        MallocMetadata* check = merge_mixed(element);
+        if(check != nullptr)
+        {
+            merge_free(element,check,2*order);
+            add_and_merge_buddies(element->father,2*order);
+        }
        
     }
 }
 
-void merge_free(MallocMetadata* node_in_free, MallocMetadata* buddy_node, int order)
+void merge_free(MallocMetadata* node_in_free, MallocMetadata* buddy_node, int order) // good
 {
     MeList* cur_list = free_blocks_arr[order];
-    for(int i = 0; i <= cur_list->length; i++)
+    MallocMetadata* cur_node = cur_list->dummy_head;
+    for(int i = 0; i < cur_list->length; i++)
     {
-        if()
+        if(cur_node == node_in_free)
+        {
+            if(node_in_free->next)
+            {
+                node_in_free->next->prev = node_in_free->prev;
+            }
+            if(node_in_free->prev)
+            {
+                node_in_free->prev->next = node_in_free->next;
+            }
+        }
+        cur_node = cur_node->next;
     }
+
+    cur_node = cur_list->dummy_head;
+    for(int i = 0; i < cur_list->length - 1; i++)
+    {
+        if(cur_node == buddy_node)
+        {
+            if(buddy_node->next)
+            {
+                buddy_node->next->prev = buddy_node->prev;
+            }
+            if(buddy_node->prev)
+            {
+                buddy_node->prev->next = buddy_node->next;
+            }
+        }
+        cur_node = cur_node->next;
+    }
+    // what sould i do with node_in_free and next node?
+
     
 }
 
-MallocMetadata* merge_mixed(MallocMetadata* node_in_mixed)
+MallocMetadata* merge_mixed(MallocMetadata* node_in_mixed) // good
 {
     MallocMetadata* next_node = node_in_mixed->next;
     MallocMetadata* prev_node = node_in_mixed->prev;
