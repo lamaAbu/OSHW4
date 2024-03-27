@@ -23,7 +23,6 @@
 
 #define MAX_ORDER 10
 #define KILO_BYTE 1024
-#define MAX_SIZE 100000000
 #define INITIAL_BLOCKS_NUM 32
 #define BLOCK_SIZE 128 * KILO_BYTE
 #define FAILED_SBRK_SYSCALL (void *)(-1)
@@ -177,14 +176,14 @@ void init_blocks(void *source_address)
 {
     for (int i = 0; i < INITIAL_BLOCKS_NUM; i++)
     {
-        MallocMetadata *element = (MallocMetadata *)((char *)source_address + (i * MAX_SIZE));
-        element->size = MAX_SIZE - sizeof(MallocMetadata);
+        MallocMetadata *element = (MallocMetadata *)((char *)source_address + (i * BLOCK_SIZE));
+        element->size = BLOCK_SIZE - sizeof(MallocMetadata);
         element->is_free = true;
         element->next = NULL;
         element->prev = NULL;
         element->next_free = NULL;
         element->prev_free = NULL;
-        element->address = i * MAX_SIZE;
+        element->address = i * BLOCK_SIZE;
         all_blocks_list->append_all(element);
         free_blocks_arr[MAX_ORDER]->append_free(element);
     }
@@ -198,6 +197,10 @@ MallocMetadata *init_buddy(MallocMetadata *element)
     buddy_of_element->address = virtual_adress;
     buddy_of_element->size = element->size;
     buddy_of_element->is_free = true;
+    buddy_of_element->next = NULL;
+    buddy_of_element->prev = NULL;
+    buddy_of_element->next_free = NULL;
+    buddy_of_element->prev_free = NULL;
     return buddy_of_element;
 }
 
@@ -224,7 +227,6 @@ MallocMetadata *merge_all(MallocMetadata *node_in_all) // approved
 
             node_in_all->next = next_node->next;
             node_in_all->size = node_in_all->size * 2 + sizeof(MallocMetadata);
-
             return node_in_all;
         }
     }
@@ -251,7 +253,7 @@ void add_and_merge_buddies(MallocMetadata *element, int order) // recursion appr
 
     if (order == MAX_ORDER)
         return;
-    
+
     else
     {
         MallocMetadata *father = merge_all(element);
@@ -260,6 +262,8 @@ void add_and_merge_buddies(MallocMetadata *element, int order) // recursion appr
             free_blocks_arr[order]->delete_node_from_free(father);
             free_blocks_arr[order]->delete_node_from_free(father->next_free);
             free_blocks_arr[order + 1]->add_node_by_adress_free(father);
+            all_blocks_list->free_blocks--;
+            all_blocks_list->length--;
             add_and_merge_buddies(father, order + 1);
         }
     }
@@ -301,7 +305,7 @@ MallocMetadata *split_free(MallocMetadata *element, int order) // 3
 // so we should go to order+1 and check if there is nodes there
 MallocMetadata *find_specific_order(int order, size_t data_size) // 2
 {
-    if (order > 10)
+    if (order > MAX_ORDER)
         return NULL;
 
     // we have to split
@@ -320,6 +324,7 @@ MallocMetadata *find_specific_order(int order, size_t data_size) // 2
             if (data_size > half_size)
             {
                 element->is_free = false;
+                all_blocks_list->free_blocks--;
                 return element;
             }
             else
@@ -328,6 +333,8 @@ MallocMetadata *find_specific_order(int order, size_t data_size) // 2
                 if (buddy == NULL)
                     return NULL;
                 all_blocks_list->add_node_after_element_all(element, buddy);
+                all_blocks_list->free_blocks++;
+                all_blocks_list->length++;
                 order--;
             }
         }
@@ -353,45 +360,27 @@ MallocMetadata *find_prefect_node(size_t data_size) // 1
     return find_specific_order(order, data_size);
 }
 
-//*********************************************************************************** FUNCS ************************************************************
-MeList me_list = MeList(); // i don't think we need this here
-
+//************************************************************ FUNCS ************************************************************
 void *smalloc(size_t size)
 {
-    if (size == 0 || size > MAX_SIZE)
-    {
-        return NULL;
-    }
-
-    MallocMetadata *cur_node = me_list.dummy_head;
-    for (int i = 0; i < me_list.length; i++)
-    {
-        if ((cur_node != NULL))
-        {
-            if (cur_node->is_free)
-                if (size <= cur_node->size)
-                {
-                    cur_node->is_free = false;
-
-                    // updating data
-                    me_list.free_blocks--;
-                    me_list.free_bytes -= cur_node->size;
-                    return (void *)((char *)cur_node + sizeof(MallocMetadata));
-                }
-            cur_node = cur_node->next;
-        }
-    }
-
-    void *new_memory = sbrk(size + sizeof(MallocMetadata));
-    if (new_memory == FAILED_SBRK_SYSCALL)
+    if (size == 0)
         return NULL;
 
-    // update list data
-    MallocMetadata *helper = (MallocMetadata *)new_memory;
-    helper->size = size;
-    helper->is_free = false;
-    me_list.append_free(helper);
-    return (void *)((char *)new_memory + sizeof(MallocMetadata));
+    if (size >= BLOCK_SIZE)
+    {
+        // implemntation of mmap
+    }
+    if (all_blocks_list->length == 0)
+    {
+        void *new_memory = sbrk(BLOCK_SIZE * INITIAL_BLOCKS_NUM);
+        if (new_memory == FAILED_SBRK_SYSCALL)
+            return NULL;
+        init_blocks(new_memory);
+    }
+    MallocMetadata *node = find_prefect_node(size);
+    // num of free blocks is updated in find_prefect_node
+    all_blocks_list->free_bytes -= node->size;
+    return (void *)((char *)node + sizeof(MallocMetadata));
 }
 
 // You should use std::memset for setting values to 0 in your scalloc().
@@ -412,23 +401,32 @@ void sfree(void *p)
     if (ptr->is_free)
         return;
     ptr->is_free = true;
-    me_list.free_blocks++;
-    me_list.free_bytes += ptr->size;
+    all_blocks_list->free_blocks++;
+    all_blocks_list->free_bytes += ptr->size;
+    check_merge(ptr);
     return;
 }
 
 // You should use std::memmove for copying data in srealloc().
 void *srealloc(void *oldp, size_t size)
 {
-    if (size == 0 || size > MAX_SIZE)
+    if (size == 0)
         return NULL;
 
     else if (!(oldp))
         return smalloc(size);
 
+    if (size >= BLOCK_SIZE)
+    {
+        // implemntation of mmap
+    }
+
     MallocMetadata *oldPtr = (MallocMetadata *)((char *)oldp - sizeof(MallocMetadata));
     if (size <= oldPtr->size)
         return oldp;
+
+    // should check case if we can merge buddy blocks
+    // else we have to look for another block and free the current block
 
     void *ptr = smalloc(size);
     if (!ptr)
@@ -441,30 +439,43 @@ void *srealloc(void *oldp, size_t size)
 //******************************************************************************* HIDDEN FUNCS **********************************************************
 size_t _num_free_blocks()
 {
-    return me_list.free_blocks;
+    return all_blocks_list->free_blocks;
 }
 
 size_t _num_free_bytes()
 {
-    return me_list.free_bytes;
+    return all_blocks_list->free_bytes;
 }
 
 size_t _num_allocated_blocks()
 {
-    return (size_t)me_list.length;
+    return (size_t)all_blocks_list->length;
 }
 
 size_t _num_allocated_bytes()
 {
-    return me_list.allocated_bytes;
+    return all_blocks_list->allocated_bytes;
 }
 
 size_t _num_meta_data_bytes()
 {
-    return (size_t)(sizeof(MallocMetadata) * me_list.length);
+    return (size_t)(sizeof(MallocMetadata) * all_blocks_list->length);
 }
 
 size_t _size_meta_data()
 {
     return (size_t)(sizeof(MallocMetadata));
 }
+
+/* 
+
+Omar's assumption : 
+    1. when we do merge, number of blocks are decreased
+    2. when we do split, number of blocks are increased
+
+Omar's notes : 
+    - didn't finish srealloc
+    - didn't implement mmap
+    - everything else is done
+
+ */
