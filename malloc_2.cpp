@@ -49,7 +49,8 @@ void MeList ::append(MallocMetadata *element)
     if (current_node == NULL)
     {
         dummy_head = element;
-        element->prev = dummy_head;
+        element->prev = NULL;
+        element->next = NULL;
         allocated_bytes += element->size;
         length++;
         return;
