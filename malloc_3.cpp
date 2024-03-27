@@ -76,10 +76,10 @@ void MeList::append_free(MallocMetadata *element)
     {
         dummy_head = element;
         element->prev_free = NULL;
+
         allocated_bytes += element->size;
         length++;
         return;
-
     }
     for (int i = 0; i < length - 1; i++)
         current_node = current_node->next_free;
@@ -87,12 +87,20 @@ void MeList::append_free(MallocMetadata *element)
     current_node->next_free = element;
     element->prev_free = current_node;
     allocated_bytes += element->size;
-    length++; 
-} 
+    length++;
+}
 
 void MeList::add_node_by_adress_free(MallocMetadata *new_node)
 {
     MallocMetadata *tmp = dummy_head;
+    if (length == 0)
+    {
+        dummy_head = new_node;
+        new_node->prev_free = NULL;
+        allocated_bytes += new_node->size;
+        length++;
+        return;
+    }
     for (int i = 0; i < length; i++)
     {
         if (tmp->address > new_node->address)
@@ -123,9 +131,8 @@ void MeList::delete_node_from_free(MallocMetadata *node)
 MallocMetadata *MeList::remove_head_free()
 {
     if (dummy_head == NULL)
-    {
         return NULL;
-    }
+
     else
     {
         MallocMetadata *tmp = dummy_head;
@@ -170,9 +177,9 @@ void MeList::add_node_after_element_all(MallocMetadata *element, MallocMetadata 
 
 //************************************************************* helper functions ************************************************************
 
-MeList *free_blocks_arr[MAX_ORDER + 1];
-MeList *all_blocks_list;
-MeList *mmap_list;
+MeList free_blocks_arr[MAX_ORDER + 1];
+MeList all_blocks_list;
+MeList mmap_list;
 
 void init_blocks(void *source_address)
 {
@@ -186,15 +193,15 @@ void init_blocks(void *source_address)
         element->next_free = NULL;
         element->prev_free = NULL;
         element->address = i * BLOCK_SIZE;
-        all_blocks_list->append_all(element);
-        free_blocks_arr[MAX_ORDER]->append_free(element);
+        all_blocks_list.append_all(element);
+        free_blocks_arr[MAX_ORDER].append_free(element);
     }
 }
 
 MallocMetadata *init_buddy(MallocMetadata *element)
 {
     int virtual_adress = (int)(element->address + element->size + sizeof(MallocMetadata));
-    char *physical_adress = (char *)all_blocks_list->dummy_head + virtual_adress;
+    char *physical_adress = (char *)all_blocks_list.dummy_head + virtual_adress;
     MallocMetadata *buddy_of_element = (MallocMetadata *)physical_adress;
     buddy_of_element->address = virtual_adress;
     buddy_of_element->size = element->size;
@@ -219,17 +226,17 @@ void *malloc_mmap(size_t size)
     node->prev = NULL;
     node->next_free = NULL;
     node->prev_free = NULL;
-    mmap_list->allocated_bytes += size;
-    mmap_list->length++;
-    mmap_list->append_all(node);
+    mmap_list.allocated_bytes += size;
+    mmap_list.length++;
+    mmap_list.append_all(node);
     return new_memory;
 }
 
-void *free_mmap(MallocMetadata *node)
+void free_mmap(MallocMetadata *node)
 {
-    mmap_list->free_blocks++;
-    mmap_list->free_bytes += node->size;
-    mmap_list->length--;
+    mmap_list.free_blocks++;
+    mmap_list.free_bytes += node->size;
+    mmap_list.length--;
     munmap(node, sizeof(MallocMetadata) + node->size);
 }
 
@@ -253,7 +260,7 @@ int order_calc(size_t size)
 void calc_merge(MallocMetadata *node, size_t *virtual_size, size_t actual_size)
 {
     int xor_result = node->address ^ ((int)(*virtual_size + sizeof(MallocMetadata)));
-    char *physical_adress = (char *)all_blocks_list->dummy_head + xor_result;
+    char *physical_adress = (char *)all_blocks_list.dummy_head + xor_result;
     MallocMetadata *buddy = (MallocMetadata *)physical_adress;
     if (buddy->is_free)
     {
@@ -262,7 +269,7 @@ void calc_merge(MallocMetadata *node, size_t *virtual_size, size_t actual_size)
             node = buddy;
         if (*virtual_size >= actual_size)
             return;
-        calc_merge(node, virtual_size);
+        calc_merge(node, virtual_size, actual_size);
     }
 }
 
@@ -310,11 +317,11 @@ void add_and_merge_buddies(MallocMetadata *element, int order) // recursion appr
         MallocMetadata *father = merge_all(element);
         if (father != NULL)
         {
-            free_blocks_arr[order]->delete_node_from_free(father);
-            free_blocks_arr[order]->delete_node_from_free(father->next_free);
-            free_blocks_arr[order + 1]->add_node_by_adress_free(father);
-            all_blocks_list->free_blocks--;
-            all_blocks_list->length--;
+            free_blocks_arr[order].delete_node_from_free(father);
+            free_blocks_arr[order].delete_node_from_free(father->next_free);
+            free_blocks_arr[order + 1].add_node_by_adress_free(father);
+            all_blocks_list.free_blocks--;
+            all_blocks_list.length--;
             add_and_merge_buddies(father, order + 1);
         }
     }
@@ -334,19 +341,19 @@ void check_merge(MallocMetadata *element) // approved
 MallocMetadata *split_free(MallocMetadata *element, int order) // 3
 {
     // removing from order
-    free_blocks_arr[order]->delete_node_from_free(element);
+    free_blocks_arr[order].delete_node_from_free(element);
 
     // adding to order - 1
     element->size = (element->size - sizeof(MallocMetadata)) / 2;
     MallocMetadata *buddy_of_element = init_buddy(element);
-    free_blocks_arr[order - 1]->add_node_by_adress_free(element);
-    free_blocks_arr[order - 1]->add_node_by_adress_free(buddy_of_element);
+    free_blocks_arr[order - 1].add_node_by_adress_free(element);
+    free_blocks_arr[order - 1].add_node_by_adress_free(buddy_of_element);
     return buddy_of_element;
 }
 
 MallocMetadata *splitter(MallocMetadata *element, int order, size_t data_size)
 {
-    while (order >= 0)
+    while (order > 0)
     {
         size_t half_size = (element->size - sizeof(MallocMetadata)) / 2;
 
@@ -354,7 +361,7 @@ MallocMetadata *splitter(MallocMetadata *element, int order, size_t data_size)
         if (data_size > half_size)
         {
             element->is_free = false;
-            all_blocks_list->free_blocks--;
+            all_blocks_list.free_blocks--;
             return element;
         }
         else
@@ -362,13 +369,15 @@ MallocMetadata *splitter(MallocMetadata *element, int order, size_t data_size)
             MallocMetadata *buddy = split_free(element, order);
             if (buddy == NULL)
                 return NULL;
-            all_blocks_list->add_node_after_element_all(element, buddy);
-            all_blocks_list->free_blocks++;
-            all_blocks_list->length++;
+            all_blocks_list.add_node_after_element_all(element, buddy);
+            all_blocks_list.free_blocks++;
+            all_blocks_list.length++;
             order--;
         }
     }
-    return NULL;
+    element->is_free = false;
+    all_blocks_list.free_blocks--;
+    return element;
 }
 
 // this function should find for me what is the specific order
@@ -376,17 +385,14 @@ MallocMetadata *splitter(MallocMetadata *element, int order, size_t data_size)
 // so we should go to order+1 and check if there is nodes there
 MallocMetadata *find_specific_order(int order, size_t data_size) // 2
 {
-    if (order > MAX_ORDER)
-        return NULL;
-
-    // we have to split
-    MallocMetadata *element = free_blocks_arr[order]->remove_head_free();
-    if (element == NULL)
-        find_specific_order(order + 1, data_size);
-
-    // found the specific order
-    else
-        return splitter(element, order, data_size);
+    while (order <= MAX_ORDER)
+    {
+        MallocMetadata *element = free_blocks_arr[order].remove_head_free();
+        if (element != NULL)
+            return splitter(element, order, data_size);
+        order++;
+    }
+    return NULL;
 }
 
 // assume that outer function calls this func
@@ -414,7 +420,7 @@ void *smalloc(size_t size)
     }
 
     // blocks
-    if (all_blocks_list->length == 0)
+    if (all_blocks_list.length == 0)
     {
         void *new_memory = sbrk(BLOCK_SIZE * INITIAL_BLOCKS_NUM);
         if (new_memory == FAILED_SBRK_SYSCALL)
@@ -423,10 +429,10 @@ void *smalloc(size_t size)
     }
     MallocMetadata *node = find_prefect_node(size);
     if (node == NULL)
-        // exception ?
+        return NULL;
 
-        // num of free blocks is updated in find_prefect_node
-        all_blocks_list->free_bytes -= node->size;
+    // num of free blocks is updated in find_prefect_node
+    all_blocks_list.free_bytes -= node->size;
     return (void *)((char *)node + sizeof(MallocMetadata));
 }
 
@@ -457,8 +463,8 @@ void sfree(void *p)
 
     // blocks
     ptr->is_free = true;
-    all_blocks_list->free_blocks++;
-    all_blocks_list->free_bytes += ptr->size;
+    all_blocks_list.free_blocks++;
+    all_blocks_list.free_bytes += ptr->size;
     check_merge(ptr);
 }
 
@@ -480,14 +486,14 @@ void *srealloc(void *oldp, size_t size)
     {
         MallocMetadata *helper = (MallocMetadata *)((char *)oldp - sizeof(MallocMetadata));
         size_t merge_size = 0;
-        calc_merge(helper, &merge_size);
+        calc_merge(helper, &merge_size, size);
         if (merge_size >= size)
         {
             MallocMetadata *merged = (MallocMetadata *)((char *)oldp - sizeof(MallocMetadata));
             check_merge(merged);
             int order = order_calc(size);
             MallocMetadata *node = splitter(helper, order, size);
-            void *put_data = (void *)((char *)helper + sizeof(MallocMetadata));
+            void *put_data = (void *)((char *)node + sizeof(MallocMetadata));
             memmove(put_data, oldp, size);
             sfree(oldp);
             return put_data;
@@ -506,27 +512,27 @@ void *srealloc(void *oldp, size_t size)
 //******************************************************************************* HIDDEN FUNCS **********************************************************
 size_t _num_free_blocks()
 {
-    return all_blocks_list->free_blocks + mmap_list->free_blocks;
+    return all_blocks_list.free_blocks + mmap_list.free_blocks;
 }
 
 size_t _num_free_bytes()
 {
-    return all_blocks_list->free_bytes + mmap_list->free_bytes;
+    return all_blocks_list.free_bytes + mmap_list.free_bytes;
 }
 
 size_t _num_allocated_blocks()
 {
-    return (size_t)(all_blocks_list->length + mmap_list->length + mmap_list->free_blocks);
+    return (size_t)(all_blocks_list.length + mmap_list.length + mmap_list.free_blocks);
 }
 
 size_t _num_allocated_bytes()
 {
-    return all_blocks_list->allocated_bytes + mmap_list->allocated_bytes;
+    return all_blocks_list.allocated_bytes + mmap_list.allocated_bytes;
 }
 
 size_t _num_meta_data_bytes()
 {
-    int all = all_blocks_list->length + mmap_list->length;
+    int all = all_blocks_list.length + mmap_list.length;
     return (size_t)(sizeof(MallocMetadata) * all);
 }
 
