@@ -155,7 +155,8 @@ void MeList::append_all(MallocMetadata *element)
     if (current_node == NULL)
     {
         dummy_head = element;
-        element->prev = NULL;
+        //element->prev = NULL; //this field is already null when calling this func
+        length ++ ;
         return;
     }
     for (int i = 0; i < length - 1; i++)
@@ -163,6 +164,7 @@ void MeList::append_all(MallocMetadata *element)
 
     current_node->next = element;
     element->prev = current_node;
+    length ++;
 }
 
 void MeList::add_node_after_element_all(MallocMetadata *element, MallocMetadata *new_node)
@@ -173,6 +175,7 @@ void MeList::add_node_after_element_all(MallocMetadata *element, MallocMetadata 
     new_node->next = next;
     new_node->prev = element;
     element->next = new_node;
+    length ++;
 }
 
 //************************************************************* helper functions ************************************************************
