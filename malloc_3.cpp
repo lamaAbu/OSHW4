@@ -204,7 +204,7 @@ void init_blocks(void *source_address)
 
 MallocMetadata *init_buddy(MallocMetadata *element)
 {
-    int virtual_adress = (int)(element->address + element->size + sizeof(MallocMetadata));
+    int virtual_adress = element->address + (int)(element->size) + int(sizeof(MallocMetadata));// it's preferred to cast explicitly
     char *physical_adress = (char *)all_blocks_list.dummy_head + virtual_adress;
     MallocMetadata *buddy_of_element = (MallocMetadata *)physical_adress;
     buddy_of_element->address = virtual_adress;
@@ -262,7 +262,7 @@ int order_calc(size_t size)
 
 void calc_merge(MallocMetadata *node, size_t *virtual_size, size_t actual_size)
 {
-    int xor_result = node->address ^ ((int)(*virtual_size + sizeof(MallocMetadata)));
+    int xor_result = node->address ^ ((int)(*virtual_size) + (int)(sizeof(MallocMetadata)));
     char *physical_adress = (char *)all_blocks_list.dummy_head + xor_result;
     MallocMetadata *buddy = (MallocMetadata *)physical_adress;
     if (buddy->is_free)
@@ -294,7 +294,7 @@ MallocMetadata *merge_all(MallocMetadata *node_in_all) // approved
             return node_in_all;
         }
     }
-    else if (prev_node != NULL)
+    else if (prev_node != NULL) // why in both cases we add the buddy to the left?? so u can do next_free in line 323?
     {
         if ((xor_result == prev_node->address) && prev_node->is_free)
         {
@@ -314,7 +314,7 @@ void add_and_merge_buddies(MallocMetadata *element, int order) // recursion appr
 
     if (order == MAX_ORDER)
     {
-        all_allocations++;
+        all_allocations++; // why?
         return;
     }
 
@@ -326,7 +326,7 @@ void add_and_merge_buddies(MallocMetadata *element, int order) // recursion appr
             free_blocks_arr[order].delete_node_from_free(father);
             free_blocks_arr[order].delete_node_from_free(father->next_free);
             free_blocks_arr[order + 1].add_node_by_adress_free(father);
-            all_blocks_list.length--;
+            all_blocks_list.length--; // we should decrease the length here because we delete the node "manually" from all in merge_all func 
             add_and_merge_buddies(father, order + 1);
         }
     }
