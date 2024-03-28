@@ -77,11 +77,13 @@ void MeList::append_free(MallocMetadata *element)
         dummy_head = element;
         element->prev_free = NULL;
 
+        length = 1;
         return;
     }
     for (int i = 0; i < length - 1; i++)
         current_node = current_node->next_free;
 
+    length ++;
     current_node->next_free = element;
     element->prev_free = current_node;
 }
@@ -93,6 +95,7 @@ void MeList::add_node_by_adress_free(MallocMetadata *new_node)
     {
         dummy_head = new_node;
         new_node->prev_free = NULL;
+        length = 1;
         return;
     }
     for (int i = 0; i < length; i++)
@@ -101,14 +104,22 @@ void MeList::add_node_by_adress_free(MallocMetadata *new_node)
             break;
         tmp = tmp->next_free;
     }
+    if(tmp->prev_free)
+    {
+        tmp->prev_free->next_free = new_node;
+    }
+    new_node->prev_free = tmp->prev_free;
     tmp->prev_free = new_node;
     new_node->next_free = tmp;
+    length ++;
+    
 }
 
 void MeList::delete_node_from_free(MallocMetadata *node)
 {
     if (node != NULL)
     {
+        length --;
         MallocMetadata *next_node = node->next_free;
         MallocMetadata *prev_node = node->prev_free;
         if (next_node)
@@ -128,8 +139,10 @@ MallocMetadata *MeList::remove_head_free()
     else
     {
         MallocMetadata *tmp = dummy_head;
-        if (tmp->next_free != NULL)
+        //if (tmp->next_free != NULL) // we don't need to check before updating dummy_head. 
+        //even if the next is null we should update dummy_head to be NULL
             dummy_head = tmp->next_free;
+        length -- ;
         return tmp;
     }
 }
