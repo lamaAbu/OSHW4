@@ -60,9 +60,6 @@ public:
     // all methods
     void append_all(MallocMetadata *element);
     void add_node_after_element_all(MallocMetadata *element, MallocMetadata *new_node);
-
-    void check_free_list(MallocMetadata *element);
-    void append_free_list(MallocMetadata *element);
 };
 
 MeList::MeList() : length(0), free_blocks(0), free_bytes(0), allocated_bytes(0)
@@ -165,51 +162,10 @@ void MeList::add_node_after_element_all(MallocMetadata *element, MallocMetadata 
     element->next = new_node;
 }
 
-void MeList::check_free_list(MallocMetadata *element)
-{
-    MallocMetadata *current_node = dummy_head;
-    if (current_node == NULL)
-        return;
-    for (int i = 0; i < length - 1; i++)
-    {
-        if (current_node->address == element)
-            break;
-        current_node = current_node->next;
-    }
-    if (current_node->address == element)
-    {
-        if (current_node->size > element->size)
-        {
-            int virtual_adress = (int)(current_node->address + element->size + sizeof(MallocMetadata));
-            char *physical_adress = (char *)all_blocks_list.dummy_head + virtual_adress;
-            MallocMetadata *new_node = (MallocMetadata *)physical_adress;
-            new_node->is_free = true;
-            new_node->size = current_node->size - (element->size + sizeof(MallocMetadata));
-            free_blocks++;
-            //append new node;
-        }
-        MallocMetadata *next_node = node->next;
-        MallocMetadata *prev_node = node->prev;
-        if (next_node)
-            next_node->prev = prev_node;
-        if (prev_node)
-            prev_node->next = next_node;
-        if ((next_node == NULL) && (prev_node == NULL))
-            dummy_head = NULL;
-        free_blocks--;
-    }
-}
-
-void MeList::append_free_list(MallocMetadata *element)
-{
-
-}
-
 //************************************************************* helper functions ************************************************************
 
 MeList free_blocks_arr[MAX_ORDER + 1];
 MeList all_blocks_list;
-MeList free_list;
 MeList mmap_list;
 int all_allocations = 0;
 
