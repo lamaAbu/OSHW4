@@ -20,6 +20,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <cmath>
+#include <iostream>
 #include <sys/mman.h>
 
 #define MAX_ORDER 10
@@ -55,7 +56,7 @@ public:
     void append_free(MallocMetadata *element);
     void add_node_by_adress_free(MallocMetadata *new_node);
     void delete_node_from_free(MallocMetadata *node);
-    MallocMetadata *remove_head_free();
+    MallocMetadata *get_head_free();
 
     // all methods
     void append_all(MallocMetadata *element);
@@ -76,14 +77,13 @@ void MeList::append_free(MallocMetadata *element)
     {
         dummy_head = element;
         element->prev_free = NULL;
-
         length = 1;
         return;
     }
     for (int i = 0; i < length - 1; i++)
         current_node = current_node->next_free;
 
-    length ++;
+    length++;
     current_node->next_free = element;
     element->prev_free = current_node;
 }
@@ -104,22 +104,21 @@ void MeList::add_node_by_adress_free(MallocMetadata *new_node)
             break;
         tmp = tmp->next_free;
     }
-    if(tmp->prev_free)
+    if (tmp->prev_free)
     {
         tmp->prev_free->next_free = new_node;
     }
     new_node->prev_free = tmp->prev_free;
     tmp->prev_free = new_node;
     new_node->next_free = tmp;
-    length ++;
-    
+    length++;
 }
 
 void MeList::delete_node_from_free(MallocMetadata *node)
 {
     if (node != NULL)
     {
-        length --;
+        length--;
         MallocMetadata *next_node = node->next_free;
         MallocMetadata *prev_node = node->prev_free;
         if (next_node)
@@ -131,20 +130,9 @@ void MeList::delete_node_from_free(MallocMetadata *node)
     }
 }
 
-MallocMetadata *MeList::remove_head_free()
+MallocMetadata *MeList::get_head_free()
 {
-    if (dummy_head == NULL)
-        return NULL;
-
-    else
-    {
-        MallocMetadata *tmp = dummy_head;
-        //if (tmp->next_free != NULL) // we don't need to check before updating dummy_head. 
-        //even if the next is null we should update dummy_head to be NULL
-            dummy_head = tmp->next_free;
-        length -- ;
-        return tmp;
-    }
+    return dummy_head;
 }
 
 //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ ALL METHODS @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -155,8 +143,8 @@ void MeList::append_all(MallocMetadata *element)
     if (current_node == NULL)
     {
         dummy_head = element;
-        //element->prev = NULL; //this field is already null when calling this func
-        length ++ ;
+        // element->prev = NULL; //this field is already null when calling this func
+        length = 1;
         return;
     }
     for (int i = 0; i < length - 1; i++)
@@ -164,7 +152,7 @@ void MeList::append_all(MallocMetadata *element)
 
     current_node->next = element;
     element->prev = current_node;
-    length ++;
+    length++;
 }
 
 void MeList::add_node_after_element_all(MallocMetadata *element, MallocMetadata *new_node)
@@ -175,7 +163,7 @@ void MeList::add_node_after_element_all(MallocMetadata *element, MallocMetadata 
     new_node->next = next;
     new_node->prev = element;
     element->next = new_node;
-    length ++;
+    length++;
 }
 
 //************************************************************* helper functions ************************************************************
@@ -204,7 +192,7 @@ void init_blocks(void *source_address)
 
 MallocMetadata *init_buddy(MallocMetadata *element)
 {
-    int virtual_adress = element->address + (int)(element->size) + int(sizeof(MallocMetadata));// it's preferred to cast explicitly
+    int virtual_adress = element->address + (int)(element->size) + int(sizeof(MallocMetadata)); // it's preferred to cast explicitly
     char *physical_adress = (char *)all_blocks_list.dummy_head + virtual_adress;
     MallocMetadata *buddy_of_element = (MallocMetadata *)physical_adress;
     buddy_of_element->address = virtual_adress;
@@ -232,7 +220,6 @@ void *malloc_mmap(size_t size)
     node->prev_free = NULL;
     mmap_list.allocated_bytes += size;
     mmap_list.length++;
-    mmap_list.append_all(node);
     return new_memory;
 }
 
@@ -291,6 +278,8 @@ MallocMetadata *merge_all(MallocMetadata *node_in_all) // approved
 
             node_in_all->next = next_node->next;
             node_in_all->size = node_in_all->size * 2 + sizeof(MallocMetadata);
+            all_allocations--;
+            all_blocks_list.length--;
             return node_in_all;
         }
     }
@@ -303,6 +292,8 @@ MallocMetadata *merge_all(MallocMetadata *node_in_all) // approved
 
             prev_node->next = node_in_all->next;
             prev_node->size = prev_node->size * 2 + sizeof(MallocMetadata);
+            all_allocations--;
+            all_blocks_list.length--;
             return prev_node;
         }
     }
@@ -313,10 +304,7 @@ void add_and_merge_buddies(MallocMetadata *element, int order) // recursion appr
 {
 
     if (order == MAX_ORDER)
-    {
-        all_allocations++; // why?
         return;
-    }
 
     else
     {
@@ -326,7 +314,6 @@ void add_and_merge_buddies(MallocMetadata *element, int order) // recursion appr
             free_blocks_arr[order].delete_node_from_free(father);
             free_blocks_arr[order].delete_node_from_free(father->next_free);
             free_blocks_arr[order + 1].add_node_by_adress_free(father);
-            all_blocks_list.length--; // we should decrease the length here because we delete the node "manually" from all in merge_all func 
             add_and_merge_buddies(father, order + 1);
         }
     }
@@ -364,21 +351,17 @@ MallocMetadata *splitter(MallocMetadata *element, int order, size_t data_size)
 
         // reached to the maximum splits he can
         if (data_size > half_size)
-        {
-            element->is_free = false;
             return element;
-        }
+
         else
         {
             MallocMetadata *buddy = split_free(element, order);
             if (buddy == NULL)
                 return NULL;
             all_blocks_list.add_node_after_element_all(element, buddy);
-            all_blocks_list.length++;
             order--;
         }
     }
-    element->is_free = false;
     return element;
 }
 
@@ -389,7 +372,7 @@ MallocMetadata *find_specific_order(int order, size_t data_size) // 2
 {
     while (order <= MAX_ORDER)
     {
-        MallocMetadata *element = free_blocks_arr[order].remove_head_free();
+        MallocMetadata *element = free_blocks_arr[order].get_head_free();
         if (element != NULL)
             return splitter(element, order, data_size);
         order++;
@@ -432,7 +415,9 @@ void *smalloc(size_t size)
     MallocMetadata *node = find_prefect_node(size);
     if (node == NULL)
         return NULL;
-
+    int order = order_calc(size);
+    free_blocks_arr[order].delete_node_from_free(node);
+    node->is_free = false;
     // num of free blocks is updated in find_prefect_node
     all_allocations++;
     all_blocks_list.allocated_bytes += size;
@@ -465,8 +450,9 @@ void sfree(void *p)
     }
 
     // blocks
+    int order = order_calc(ptr->size);
+    free_blocks_arr[order].add_node_by_adress_free(ptr);
     ptr->is_free = true;
-    all_blocks_list.free_bytes += ptr->size;
     all_allocations--;
     check_merge(ptr);
 }
@@ -515,27 +501,53 @@ void *srealloc(void *oldp, size_t size)
 //******************************************************************************* HIDDEN FUNCS **********************************************************
 size_t _num_free_blocks()
 {
-    return all_blocks_list.free_blocks;
+    int total = 0;
+    for (int i = 0; i <= MAX_ORDER; i++)
+        total += free_blocks_arr[i].length;
+    return total;
 }
 
 size_t _num_free_bytes()
 {
-    return all_blocks_list.free_bytes;
+    int total = 0;
+    for (int i = 0; i <= MAX_ORDER; i++)
+        total += free_blocks_arr[i].length * (pow(2, i) * 128 - sizeof(MallocMetadata));
+    return total;
 }
 
 size_t _num_allocated_blocks()
 {
-    return (size_t)(all_allocations + mmap_list.length);
+    int total = 0;
+    for (int i = 0; i <= MAX_ORDER; i++)
+    {
+        std::cout << free_blocks_arr[i].length << std::endl;
+        total += free_blocks_arr[i].length;
+    }
+    std::cout << "-----------" << std::endl;
+    return (size_t)(all_allocations + mmap_list.length + total);
 }
 
 size_t _num_allocated_bytes()
 {
-    return all_blocks_list.allocated_bytes + mmap_list.allocated_bytes;
+    int maxSize = INITIAL_BLOCKS_NUM * BLOCK_SIZE;
+    int total = 0;
+    for (int i = 0; i <= MAX_ORDER; i++)
+        total += free_blocks_arr[i].length;
+    total += all_allocations;
+    int toReturn = maxSize - (int)(total * sizeof(MallocMetadata));
+    if (total == 0)
+        toReturn = 0;
+    return (size_t)(toReturn + mmap_list.allocated_bytes);
 }
 
 size_t _num_meta_data_bytes()
 {
-    int all = all_allocations + mmap_list.length;
+    int total = 0;
+    for (int i = 0; i <= MAX_ORDER; i++)
+    {
+        total += free_blocks_arr[i].length;
+    }
+    int all = all_allocations + mmap_list.length + total;
     return (size_t)(sizeof(MallocMetadata) * all);
 }
 
