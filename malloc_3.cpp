@@ -364,9 +364,7 @@ MallocMetadata *splitter(MallocMetadata *element, int order, size_t data_size)
 
         // reached to the maximum splits he can
         if (data_size > half_size)
-        {
             return element;
-        }
 
         else
         {
@@ -490,17 +488,26 @@ void *srealloc(void *oldp, size_t size)
     if (size < BLOCK_SIZE)
     {
         MallocMetadata *helper = (MallocMetadata *)((char *)oldp - sizeof(MallocMetadata));
-        size_t merge_size = 0;
+        size_t merge_size = helper->size;
         calc_merge(helper, &merge_size, size);
         if (merge_size >= size)
         {
             MallocMetadata *merged = (MallocMetadata *)((char *)oldp - sizeof(MallocMetadata));
+            merged->is_free = true;
+            int order_merged = order_calc(merged->size);
+            free_blocks_arr[order_merged].add_node_by_adress_free(merged);
             check_merge(merged);
-            int order = order_calc(size);
-            MallocMetadata *node = splitter(helper, order, size);
+            int order_helper = order_calc(helper->size + sizeof(MallocMetadata));
+            MallocMetadata *node = splitter(helper, order_helper, size);
+            if (node == NULL)
+                return NULL;
+            int order_node = order_calc(node->size);
+            free_blocks_arr[order_node].delete_node_from_free(node);
+            node->is_free = false;
+
             void *put_data = (void *)((char *)node + sizeof(MallocMetadata));
             memmove(put_data, oldp, size);
-            sfree(oldp);
+            //sfree(oldp);
             return put_data;
         }
     }
@@ -536,7 +543,6 @@ size_t _num_allocated_blocks()
     int total = 0;
     for (int i = 0; i <= MAX_ORDER; i++)
         total += free_blocks_arr[i].length;
-
     return (size_t)(all_allocations + mmap_list.length + total);
 }
 
