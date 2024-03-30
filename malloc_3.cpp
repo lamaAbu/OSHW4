@@ -293,7 +293,6 @@ MallocMetadata *merge_all(MallocMetadata *node_in_all) // approved
 
             node_in_all->next = next_node->next;
             node_in_all->size = node_in_all->size * 2 + sizeof(MallocMetadata);
-            all_allocations--;
             all_blocks_list.length--;
             return node_in_all;
         }
@@ -307,7 +306,6 @@ MallocMetadata *merge_all(MallocMetadata *node_in_all) // approved
 
             prev_node->next = node_in_all->next;
             prev_node->size = prev_node->size * 2 + sizeof(MallocMetadata);
-            all_allocations--;
             all_blocks_list.length--;
             return prev_node;
         }
@@ -414,13 +412,6 @@ void *smalloc(size_t size)
     if (size == 0)
         return NULL;
 
-    // mmap
-    if (size >= BLOCK_SIZE)
-    {
-        void *new_memory = malloc_mmap(size);
-        return (void *)((char *)new_memory + sizeof(MallocMetadata));
-    }
-
     // blocks
     if (all_blocks_list.length == 0)
     {
@@ -429,6 +420,14 @@ void *smalloc(size_t size)
             return NULL;
         init_blocks(new_memory);
     }
+
+    // mmap
+    if (size >= BLOCK_SIZE)
+    {
+        void *new_memory = malloc_mmap(size);
+        return (void *)((char *)new_memory + sizeof(MallocMetadata));
+    }
+
     MallocMetadata *node = find_prefect_node(size);
     if (node == NULL)
         return NULL;
@@ -536,11 +535,8 @@ size_t _num_allocated_blocks()
 {
     int total = 0;
     for (int i = 0; i <= MAX_ORDER; i++)
-    {
-        std::cout << free_blocks_arr[i].length << std::endl;
         total += free_blocks_arr[i].length;
-    }
-    std::cout << "-----------" << std::endl;
+
     return (size_t)(all_allocations + mmap_list.length + total);
 }
 
