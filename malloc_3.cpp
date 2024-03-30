@@ -76,7 +76,6 @@ void MeList::append_free(MallocMetadata *element)
     if (current_node == NULL)
     {
         dummy_head = element;
-        element->prev_free = NULL;
         length = 1;
         return;
     }
@@ -94,11 +93,26 @@ void MeList::add_node_by_adress_free(MallocMetadata *new_node)
     if (length == 0)
     {
         dummy_head = new_node;
-        new_node->prev_free = NULL;
         length = 1;
         return;
     }
-    for (int i = 0; i < length; i++)
+    if (length == 1)
+    {
+        if (new_node->address > tmp->address)
+        {
+            tmp->next_free = new_node;
+            new_node->prev_free = tmp;
+        }
+        else
+        {
+            tmp->prev_free = new_node;
+            new_node->next_free = tmp;
+            dummy_head = new_node;
+        }
+        length++;
+        return;
+    }
+    for (int i = 0; i < length - 1; i++)
     {
         if (tmp->address > new_node->address)
             break;
@@ -121,6 +135,8 @@ void MeList::delete_node_from_free(MallocMetadata *node)
         length--;
         MallocMetadata *next_node = node->next_free;
         MallocMetadata *prev_node = node->prev_free;
+        if (node->address == dummy_head->address)
+            dummy_head = next_node;
         if (next_node)
             next_node->prev_free = prev_node;
         if (prev_node)
@@ -143,7 +159,6 @@ void MeList::append_all(MallocMetadata *element)
     if (current_node == NULL)
     {
         dummy_head = element;
-        // element->prev = NULL; //this field is already null when calling this func
         length = 1;
         return;
     }
@@ -351,7 +366,9 @@ MallocMetadata *splitter(MallocMetadata *element, int order, size_t data_size)
 
         // reached to the maximum splits he can
         if (data_size > half_size)
+        {
             return element;
+        }
 
         else
         {
