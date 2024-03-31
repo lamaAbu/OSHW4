@@ -27,6 +27,7 @@
 #define KILO_BYTE 1024
 #define INITIAL_BLOCKS_NUM 32
 #define BLOCK_SIZE 128 * KILO_BYTE
+#define MAX_SIZE 100000000
 #define FAILED_SBRK_SYSCALL (void *)(-1)
 
 class MallocMetadata
@@ -416,7 +417,7 @@ MallocMetadata *find_prefect_node(size_t data_size) // 1
 //************************************************************ FUNCS ************************************************************
 void *smalloc(size_t size)
 {
-    if (size == 0)
+    if (size == 0 || size > MAX_SIZE)
         return NULL;
 
     // blocks
@@ -484,7 +485,7 @@ void sfree(void *p)
 // You should use std::memmove for copying data in srealloc().
 void *srealloc(void *oldp, size_t size)
 {
-    if (size == 0)
+    if (size == 0 || size > MAX_SIZE)
         return NULL;
 
     else if (!(oldp))
