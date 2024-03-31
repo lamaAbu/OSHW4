@@ -61,6 +61,7 @@ public:
     // all methods
     void append_all(MallocMetadata *element);
     void add_node_after_element_all(MallocMetadata *element, MallocMetadata *new_node);
+    void delete_node_from_all(MallocMetadata *node);
 };
 
 MeList::MeList() : length(0), free_blocks(0), free_bytes(0), allocated_bytes(0)
@@ -96,7 +97,13 @@ void MeList::add_node_by_adress_free(MallocMetadata *new_node)
         length = 1;
         return;
     }
-    if (length == 1)
+    for (int i = 0; i < length - 1; i++)
+    {
+        if (tmp->address > new_node->address)
+            break;
+        tmp = tmp->next_free;
+    }
+    if (tmp == dummy_head)
     {
         if (new_node->address > tmp->address)
         {
@@ -111,12 +118,6 @@ void MeList::add_node_by_adress_free(MallocMetadata *new_node)
         }
         length++;
         return;
-    }
-    for (int i = 0; i < length - 1; i++)
-    {
-        if (tmp->address > new_node->address)
-            break;
-        tmp = tmp->next_free;
     }
     if (tmp->prev_free)
     {
@@ -179,6 +180,24 @@ void MeList::add_node_after_element_all(MallocMetadata *element, MallocMetadata 
     new_node->prev = element;
     element->next = new_node;
     length++;
+}
+
+void MeList::delete_node_from_all(MallocMetadata *node)
+{
+    if (node != NULL)
+    {
+        length--;
+        MallocMetadata *next_node = node->next;
+        MallocMetadata *prev_node = node->prev;
+        if (node->address == dummy_head->address)
+            dummy_head = next_node;
+        if (next_node)
+            next_node->prev = prev_node;
+        if (prev_node)
+            prev_node->next = next_node;
+        if ((next_node == NULL) && (prev_node == NULL))
+            dummy_head = NULL;
+    }
 }
 
 //************************************************************* helper functions ************************************************************
@@ -281,32 +300,20 @@ void calc_merge(MallocMetadata *node, size_t *virtual_size, size_t actual_size)
 // either returns "father" or NULL
 MallocMetadata *merge_all(MallocMetadata *node_in_all) // approved
 {
-    MallocMetadata *next_node = node_in_all->next;
-    MallocMetadata *prev_node = node_in_all->prev;
+    MallocMetadata *next_node = node_in_all->next_free;
+    MallocMetadata *prev_node = node_in_all->prev_free;
     int xor_result = node_in_all->address ^ ((int)(node_in_all->size + sizeof(MallocMetadata)));
     if (next_node != NULL)
     {
         if ((xor_result == next_node->address) && next_node->is_free)
         {
-            if (next_node->next != NULL)
-                next_node->next->prev = node_in_all;
-
-            node_in_all->next = next_node->next;
-            node_in_all->size = node_in_all->size * 2 + sizeof(MallocMetadata);
-            all_blocks_list.length--;
             return node_in_all;
         }
     }
-    else if (prev_node != NULL) // why in both cases we add the buddy to the left?? so u can do next_free in line 323?
+    else if (prev_node != NULL)
     {
         if ((xor_result == prev_node->address) && prev_node->is_free)
         {
-            if (node_in_all->next != NULL)
-                node_in_all->next->prev = prev_node;
-
-            prev_node->next = node_in_all->next;
-            prev_node->size = prev_node->size * 2 + sizeof(MallocMetadata);
-            all_blocks_list.length--;
             return prev_node;
         }
     }
@@ -326,7 +333,9 @@ void add_and_merge_buddies(MallocMetadata *element, int order) // recursion appr
         {
             free_blocks_arr[order].delete_node_from_free(father);
             free_blocks_arr[order].delete_node_from_free(father->next_free);
+            father->size = father->size * 2 + sizeof(MallocMetadata);
             free_blocks_arr[order + 1].add_node_by_adress_free(father);
+            all_blocks_list.delete_node_from_all(father->next_free);
             add_and_merge_buddies(father, order + 1);
         }
     }
@@ -468,6 +477,7 @@ void sfree(void *p)
     free_blocks_arr[order].add_node_by_adress_free(ptr);
     ptr->is_free = true;
     all_allocations--;
+
     check_merge(ptr);
 }
 
@@ -507,7 +517,7 @@ void *srealloc(void *oldp, size_t size)
 
             void *put_data = (void *)((char *)node + sizeof(MallocMetadata));
             memmove(put_data, oldp, size);
-            //sfree(oldp);
+            // sfree(oldp);
             return put_data;
         }
     }
