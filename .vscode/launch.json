@@ -8,8 +8,8 @@
       "args": [],
       "stopAtEntry": false,
       "externalConsole": true,
-      "cwd": "c:/Users/lamaa/OneDrive/Desktop/Operating Systems/HW/HW4/OSHW4",
-      "program": "c:/Users/lamaa/OneDrive/Desktop/Operating Systems/HW/HW4/OSHW4/build/Debug/outDebug",
+      "cwd": "c:/Users/lamaa/OneDrive/Desktop/Operating Systems/HW/HW4/new/OSHW4",
+      "program": "c:/Users/lamaa/OneDrive/Desktop/Operating Systems/HW/HW4/new/OSHW4/build/Debug/outDebug",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",
       "setupCommands": [
